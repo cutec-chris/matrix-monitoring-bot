@@ -2,4 +2,4 @@ server:
   url: "https://matrix.org"
   user: monitoring
   password: botpassword
-  prefix: monitoring
+  prefix: "monitoring:"
