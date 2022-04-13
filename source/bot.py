@@ -1,28 +1,47 @@
 import asyncio,subprocess,datetime
 from lib2to3.pytree import Base
+
+from numpy import argsort
 from init import *
 loop = None
 servers = []
+class Server(object):
+    def __init__(self,room,**kwargs) -> None:
+        if isinstance(room, dict):
+            self.__dict__.update(room)
+        else:
+            self.room = room
+            self.__dict__.update(kwargs)
+        self.status = None
+        self.lastcontact = None
+        if not hasattr(self,'remains'):
+            self.remains = 0
+async def save_servers():
+    global servers
+    sservers = []
+    for server in servers:
+        sservers.append(server.__dict__)
+    with open('data.json', 'w') as f:
+        json.dump(sservers,f, skipkeys=True)
 @bot.listener.on_message_event
 async def add(room, message):
     global servers,loop
     match = botlib.MessageMatch(room, message, bot, prefix)
     if match.is_not_from_this_bot() and match.prefix()\
     and match.command("ping"):
-        server = {
-            'room': room.room_id,
-            'server': match.args()[1],
-            'interval': match.args()[2],
-        }
+        if len(match.args())>2:
+            interval=match.args()[2]
+        else:
+            interval = 60
+        server = Server(
+            room=room.room_id,
+            server=match.args()[1],
+            interval=interval
+        )
         servers.append(server)
         loop.create_task(check_server(server))
-        with open('data.json', 'w') as f:
-            json.dump(servers,f)
+        await save_servers()
         await bot.api.send_text_message(room.room_id,'ok')
-@bot.listener.on_reaction_event
-async def echo_reaction(room, event, reaction):
-    resp_message = f"Reaction: {reaction}"
-    await bot.api.send_text_message(room.room_id, resp_message)
 @bot.listener.on_message_event
 async def bot_help(room, message):
     bot_help_message = f"""
@@ -43,43 +62,43 @@ async def bot_help(room, message):
     or match.command("h")):
         await bot.api.send_text_message(room.room_id, bot_help_message)
 async def printstatus(server):
-    answer = 'Server '+server['server']+' is '
-    if server['status']:
+    answer = 'Server '+server.server+' is '
+    if server.status:
         answer += 'up'
-        server['lastcontact'] = datetime.datetime.now()
     else:
         answer += 'down'
-    if server['lastcontact']:
-        answer += ' last contact was '+str(server['lastcontact'])
-    await bot.api.send_text_message(server['room'],answer)
+    if server.lastcontact:
+        answer += ' last contact was '+str(server.lastcontact)
+    await bot.api.send_text_message(server.room,answer)
 async def check_server(server):
     while True:
         try:
-            if 'remains' in server and server['remains']>0:
-                server['remains'] -= 1
+            if server.remains>0:
+                server.remains -= 1
             else: 
-                server['remains'] = int(server['interval'])
+                server.remains = int(server.interval)
                 try:
-                    if subprocess.check_output(["ping", "-c", "1","-W",str(0.1), server['server']]):
+                    if subprocess.check_output(["ping", "-c", "1","-W",str(0.1), server.server]):
                         nstatus = True
+                        server.lastcontact = datetime.datetime.now()
                 except:
                     nstatus = False
-                if not 'status' in server:
-                    server['status'] = None
-                    server['lastcontact'] = None
-                if nstatus != server['status']:
-                    server['status'] = nstatus
+                if nstatus != server.status:
+                    server.status = nstatus
                     await printstatus(server)
         except BaseException as e:
             pass
         await asyncio.sleep(1)
 @bot.listener.on_startup
-async def startup(server):
+async def startup(room):
     global loop,servers
     loop = asyncio.get_running_loop()
     try:
         with open('data.json', 'r') as f:
-            servers = json.load(f)
+            aservers = json.load(f)
+            for server in aservers:
+                nserver = Server(server)
+                servers.append(nserver)
     except: pass
     for server in servers:
         loop.create_task(check_server(server))
