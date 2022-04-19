@@ -3,26 +3,13 @@ from lib2to3.pytree import Base
 
 from numpy import argsort
 from init import *
-loop = None
-servers = []
-class Server(object):
-    def __init__(self,room,**kwargs) -> None:
-        if isinstance(room, dict):
-            self.__dict__.update(room)
-        else:
-            self.room = room
-            self.__dict__.update(kwargs)
+class Server(Config):
+    def __init__(self, room, **kwargs) -> None:
+        super().__init__(room, **kwargs)
         self.status = None
         self.lastcontact = None
         if not hasattr(self,'remains'):
             self.remains = 0
-async def save_servers():
-    global servers
-    sservers = []
-    for server in servers:
-        sservers.append(server.__dict__)
-    with open('data.json', 'w') as f:
-        json.dump(sservers,f, skipkeys=True)
 @bot.listener.on_message_event
 async def add(room, message):
     global servers,loop
@@ -86,6 +73,7 @@ async def check_server(server):
                 if nstatus != server.status:
                     server.status = nstatus
                     await printstatus(server)
+                    await save_servers()
         except BaseException as e:
             pass
         await asyncio.sleep(1)
